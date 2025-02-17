@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { database, ref, push } from "./firebaseConfig"; // Firebase imports
+import { database, ref, push, get } from "./firebaseConfig"; // Firebase imports
 import "./App.css";
 
 const questions = [
@@ -11,56 +11,69 @@ const questions = [
 
 export default function QuizPage() {
   const navigate = useNavigate();
-  const [teamName, setTeamName] = useState(localStorage.getItem("teamName") || "Unknown Team"); // ✅ Store team name in state
- 
-  useEffect(() => {
-    const storedTeamName = localStorage.getItem("teamName");
-    if (storedTeamName) {
-      setTeamName(storedTeamName);
-    } else {
-      setTeamName("Unknown Team"); // Default if not found
-    }
-  }, []);
- 
-  const [timeLeft, setTimeLeft] = useState(() => {
-    const savedTime = localStorage.getItem(`quizTimeLeft_${teamName}`);
-    return savedTime ? parseInt(savedTime) : 30 * 60; // 30 minutes
-  });
+  const [teamName, setTeamName] = useState(localStorage.getItem("teamName") || "Unknown Team");
+  const [timeLeft, setTimeLeft] = useState(30 * 60);
+
+useEffect(() => {
+  const savedTime = localStorage.getItem(`quizTimeLeft_${teamName}`);
+  if (savedTime) {
+    setTimeLeft(parseInt(savedTime));
+  }
+}, [teamName]); // Update when teamName is loaded
+
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState({});
   const [score, setScore] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
 
-  // ✅ Fix: Check if the quiz was submitted before
   useEffect(() => {
-    const storedTeamName = localStorage.getItem("teamName") || "Unknown Team";
-    const isSubmitted = localStorage.getItem(`quizSubmitted_${storedTeamName}`);
-    const storedScore = localStorage.getItem(`quizScore_${storedTeamName}`);
-
-    if (isSubmitted && storedScore !== null) {
-      setSubmitted(true);
-      setScore(storedScore);
-    }
+    const fetchTeamName = async () => {
+      try {
+        const dbRef = ref(database, "teams"); // Change to the correct path in Firebase
+        const snapshot = await get(dbRef);
+        if (snapshot.exists()) {
+          const teamsData = snapshot.val();
+          const lastTeam = Object.values(teamsData).pop(); // Assuming the last added team is the one playing
+          setTeamName(lastTeam.teamName);
+        }
+      } catch (error) {
+        console.error("Error fetching team name:", error);
+      }
+    };
+  
+    fetchTeamName();
   }, []);
+  
+  // useEffect(() => {
+  //   const storedTeamName = localStorage.getItem("teamName") || "Unknown Team";
+  //   const isSubmitted = localStorage.getItem(`quizSubmitted_${storedTeamName}`);
+  //   const storedScore = localStorage.getItem(`quizScore_${storedTeamName}`);
 
-  // Timer logic
+  //   if (isSubmitted && storedScore !== null) {
+  //     setSubmitted(true);
+  //     setScore(parseInt(storedScore));
+  //     fetchLeaderboard(); // Fetch leaderboard if already submitted
+  //   }
+  // }, []);
+
   useEffect(() => {
     if (timeLeft <= 0) {
-      handleSubmit(); // Auto-submit when time runs out
+      handleSubmit();
       return;
     }
-  
+
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         const newTime = prev - 1;
-        localStorage.setItem(`quizTimeLeft_${teamName}`, newTime); // Store team-specific time
+        localStorage.setItem(`quizTimeLeft_${teamName}`, newTime);
         return newTime;
       });
     }, 1000);
-  
+
     return () => clearInterval(timer);
   }, [timeLeft]);
-  
+
   const handleAnswer = (e) => {
     setAnswers({ ...answers, [currentQuestion]: e.target.value });
   };
@@ -73,36 +86,59 @@ export default function QuizPage() {
     if (currentQuestion > 0) setCurrentQuestion(currentQuestion - 1);
   };
 
-  // ✅ Fix: Make sure scoring is correct
   const calculateScore = () => {
     let totalScore = 0;
     questions.forEach((q, index) => {
       if (answers[index] && answers[index].toLowerCase() === q.answer.toLowerCase()) {
-        if (index === 0) totalScore += 100; // Question 1 → 100 points
-        else if (index === 1) totalScore += 200; // Question 2 → 200 points
-        else if (index === 2) totalScore += 400; // Question 3 → 400 points
+        if (index === 0) totalScore += 100;
+        else if (index === 1) totalScore += 200;
+        else if (index === 2) totalScore += 400;
       }
     });
     return totalScore;
   };
 
-  // ✅ Fix: Ensure `teamName` is defined
   const handleSubmit = async () => {
     const finalScore = calculateScore();
     setScore(finalScore);
     setSubmitted(true);
 
-    const storedTeamName = localStorage.getItem("teamName") || "Unknown Team"; // Fix here
+    if (!teamName) {
+      console.error("Team name not found. Cannot submit quiz.");
+      return;
+    }
 
-    localStorage.setItem(`quizSubmitted_${storedTeamName}`, "true");
-    localStorage.setItem(`quizScore_${storedTeamName}`, finalScore);
-    localStorage.removeItem(`quizTimeLeft_${storedTeamName}`);
+    localStorage.setItem(`quizSubmitted_${teamName}`, "true");
+    localStorage.setItem(`quizScore_${teamName}`, finalScore);
+    localStorage.removeItem(`quizTimeLeft_${teamName}`);
 
     try {
-      const dbRef = ref(database, `quizResults/${storedTeamName}`);
-      await push(dbRef, { teamName: storedTeamName, answers, score: finalScore });
+      const dbRef = ref(database, `quizResults/${teamName}`);
+      await push(dbRef, { teamName, score: finalScore });
+
+      fetchLeaderboard();
     } catch (error) {
       console.error("Error saving results:", error);
+    }
+  };
+
+
+  const fetchLeaderboard = async () => {
+    try {
+      const dbRef = ref(database, "quizResults");
+      const snapshot = await get(dbRef);
+      if (snapshot.exists()) {
+        const teams = [];
+        snapshot.forEach((teamSnap) => {
+          teamSnap.forEach((entry) => {
+            teams.push(entry.val());
+          });
+        });
+        teams.sort((a, b) => b.score - a.score); // Sort leaderboard by score
+        setLeaderboard(teams);
+      }
+    } catch (error) {
+      console.error("Error fetching leaderboard:", error);
     }
   };
 
@@ -112,6 +148,15 @@ export default function QuizPage() {
         <div className="score-screen">
           <h2>Quiz Completed!</h2>
           <p>Your Score: <strong>{score} points</strong></p>
+
+          <h2>Leaderboard</h2>
+          <ul className="leaderboard">
+            {leaderboard.map((team, index) => (
+              <li key={index}>
+                <strong>{index + 1}. {team.teamName}</strong> - {team.score} points
+              </li>
+            ))}
+          </ul>
         </div>
       ) : (
         <>

@@ -75,3 +75,52 @@ body {
 .success-message p {
   margin: 5px 0;
 }
+
+/* Leaderboard Styling */
+.leaderboard {
+  margin-top: 20px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.leaderboard h2 {
+  text-align: center;
+  font-size: 1.5rem;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.leaderboard ul {
+  list-style: none;
+  padding: 0;
+}
+
+.leaderboard li {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  font-size: 1.1rem;
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+}
+
+.leaderboard li:last-child {
+  border-bottom: none;
+}
+
+.leaderboard li:nth-child(1) {
+  color: gold;
+}
+
+.leaderboard li:nth-child(2) {
+  color: silver;
+}
+
+.leaderboard li:nth-child(3) {
+  color: #cd7f32; /* Bronze */
+}
